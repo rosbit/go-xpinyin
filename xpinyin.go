@@ -43,70 +43,75 @@ func GetPinyins(s string, opts ...Option) []string {
 
 func getPinyins(s string, opts ...Option) (<-chan string) {
 	op := getOptions(opts...)
-	all_pinyin_options := [][]string{} // a list of lists that we'll fill with all pinyin options for each character
-	is_in_list := true                 // in the list (otherwise, probably not a Chinese character)
+	all_pinyin_options := make(chan []string) // a list of lists that we'll fill with all pinyin options for each character
+	is_in_list := true  // in the list (otherwise, probably not a Chinese character)
 	var lastOpts []string
 	var lastSeq *string
-	for _, ch := range s {
-		pinyins, ok := dict[ch]
-		if !ok {
-			if is_in_list {
-				is_in_list = false // within a sequence of non Chinese characters
-				lastOpts = []string{toStr(ch)} // add as is
-				lastSeq = &lastOpts[len(lastOpts)-1]
+	go func() {
+		for _, ch := range s {
+			pinyins, ok := dict[ch]
+			if !ok {
+				if is_in_list {
+					is_in_list = false // within a sequence of non Chinese characters
+					lastOpts = []string{toStr(ch)} // add as is
+					lastSeq = &lastOpts[len(lastOpts)-1]
+				} else {
+					*lastSeq = *lastSeq + toStr(ch) // add to previous sequence of non Chinese chars
+				}
 			} else {
-				*lastSeq = *lastSeq + toStr(ch) // add to previous sequence of non Chinese chars
-			}
-		} else {
-			if lastOpts != nil {
-				all_pinyin_options = append(all_pinyin_options, lastOpts)
-				lastOpts, lastSeq = nil, nil
-			}
+				if lastOpts != nil {
+					all_pinyin_options <- lastOpts
+					lastOpts, lastSeq = nil, nil
+				}
 
-			var char_py_options []string
-			if !op.toneMarks && !op.toneNumbers {
-				// in this case we may have duplicates if the variations differ just by the tones
-				for _, v := range pinyins {
-					vv := v[:len(v)-1]
-					if !exists(vv, char_py_options) {
-						char_py_options = append(char_py_options, vv)
+				var char_py_options []string
+				if !op.toneMarks && !op.toneNumbers {
+					// in this case we may have duplicates if the variations differ just by the tones
+					for _, v := range pinyins {
+						vv := v[:len(v)-1]
+						if !exists(vv, char_py_options) {
+							char_py_options = append(char_py_options, vv)
+						}
 					}
+				} else {
+					char_py_options = pinyins
 				}
-			} else {
-				char_py_options = pinyins
-			}
 
-			var last int
-			if op.maxnCombinations == 1 {
-				last = 1
-			} else {
-				last = len(char_py_options)
-			}
-
-			var char_options []string
-			if op.toneMarks {
-				char_options = make([]string, last)
-				for i, o := range char_py_options[:last] {
-					char_options[i] = decode_pinyin(o)
+				var last int
+				if op.maxnCombinations == 1 {
+					last = 1
+				} else {
+					last = len(char_py_options)
 				}
-			} else {
-				// 'numbers' or None
-				char_options = char_py_options[:last]
-			}
 
-			c := len(char_options)
-			pys := make([]string, c)
-			for i, o := range char_options {
-				pys[i] = convert_pinyin(o, op)
+				var char_options []string
+				if op.toneMarks {
+					char_options = make([]string, last)
+					for i, o := range char_py_options[:last] {
+						char_options[i] = decode_pinyin(o)
+					}
+				} else {
+					// 'numbers' or None
+					char_options = char_py_options[:last]
+				}
+
+				c := len(char_options)
+				pys := make([]string, c)
+				for i, o := range char_options {
+					pys[i] = convert_pinyin(o, op)
+				}
+				all_pinyin_options <- pys
+				is_in_list = true
 			}
-			all_pinyin_options = append(all_pinyin_options, pys)
-			is_in_list = true
 		}
-	}
-	if lastOpts != nil {
-		all_pinyin_options = append(all_pinyin_options, lastOpts)
-		lastOpts, lastSeq = nil, nil
-	}
+		if lastOpts != nil {
+			all_pinyin_options <- lastOpts
+			lastOpts, lastSeq = nil, nil
+		}
+
+		close(all_pinyin_options)
+	}()
+
 	return get_combs(all_pinyin_options, op)
 }
 

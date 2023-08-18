@@ -10,11 +10,14 @@ import (
 //
 // e.g. [2, 2, 1] -> [[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0]]
 // i.e. we have 2 options (0, 1) for the first and second places and one option (0) for the third.
-func get_comb_indexes(num_options_list []int, n int) (<-chan []int) {
+func get_comb_indexes(comb_numbers <-chan int, n int) (n_items int, index <-chan int) {
 	// calculate the maximal number of possible combinations
 	n_max := 1
-	for _, j := range num_options_list {
+	num_options_list := []int{}
+	for j := range comb_numbers {
 		n_max *= j
+		n_items += 1
+		num_options_list = append(num_options_list, j)
 	}
 	if n_max < n {
 		n = n_max
@@ -23,22 +26,21 @@ func get_comb_indexes(num_options_list []int, n int) (<-chan []int) {
 		panic("0-length list not allowed")
 	}
 
-	n_items := len(num_options_list)
-	combs := make(chan []int)
+	combIndex := make(chan int)
 	go func() {
 		i := n_items - 1
 		count := 1
 		curr := make([]int, n_items)
-		currCopy := make([]int, n_items)
-		copy(currCopy, curr)
-		combs <- currCopy
+		for _, idx := range curr {
+			combIndex <- idx
+		}
 
 		for count < n {
 			curr[i] = (curr[i]+1) % num_options_list[i]
 			if curr[i] != 0 {
-				currCopy = make([]int, n_items)
-				copy(currCopy, curr)
-				combs <- currCopy
+				for _, idx := range curr {
+					combIndex <- idx
+				}
 				count += 1
 				i = n_items - 1 // reset to right-most digit
 			} else {
@@ -46,33 +48,47 @@ func get_comb_indexes(num_options_list []int, n int) (<-chan []int) {
 			}
 		}
 
-		close(combs)
+		close(combIndex)
 	}()
 
-	return combs
+	index = combIndex
+	return
 }
 
 // Given a list of options per place, returns up to n combinations
 // e.g.: [['a'], ['1' ,'2'], ['@']] -> [a1@, a2@]
 // For instance, ['1' ,'2'] is the group defining the options for the second place
-func get_combs(py_opts [][]string, opt *options) (<-chan string) {
-	combs := make(chan string)
-	comb_numbers := make([]int, len(py_opts))
-	for i, o := range py_opts {
-		comb_numbers[i] = len(o)
-	}
-	combs_indexes := get_comb_indexes(comb_numbers, opt.maxnCombinations)
+func get_combs(pyOpts <-chan []string, opt *options) (<-chan string) {
+	comb_numbers, py_opts := makeCombNumbers(pyOpts)
 
+	combs := make(chan string)
 	go func() {
-		for c := range combs_indexes {
-			comb := []string{}
-			for i:=0; i<len(c); i++ {
-				comb = append(comb, py_opts[i][c[i]])
+		nItems, combIndex := get_comb_indexes(comb_numbers, opt.maxnCombinations)
+		comb, i := make([]string, nItems), 0
+		for idx := range combIndex {
+			comb[i] = py_opts[i][idx]
+			if i=i+1; i >= nItems {
+				combs <- strings.Join(comb, opt.splitter)
+				i = 0
 			}
-			combs <- strings.Join(comb, opt.splitter)
 		}
 		close(combs)
 	}()
 	return combs
 }
 
+func makeCombNumbers(pyOpts <-chan []string) (<-chan int, [][]string) {
+	py_opts := [][]string{}
+	for po := range pyOpts {
+		py_opts = append(py_opts, po)
+	}
+	comb_numbers := make(chan int)
+
+	go func() {
+		for _, o := range py_opts {
+			comb_numbers <- len(o)
+		}
+		close(comb_numbers)
+	}()
+	return comb_numbers, py_opts
+}
