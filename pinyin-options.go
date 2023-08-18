@@ -1,9 +1,6 @@
 package xpinyin
 
 const (
-	ToneMarks   = "marks"
-	ToneNumbers = "numbers"
-
 	defSplitter      = "-"
 	defNCombinations = 10
 )

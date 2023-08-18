@@ -7,7 +7,10 @@ import (
 	"strconv"
 )
 
-const vowelsPattern = "aoeiuv\u00fc"
+const (
+	vowelsPattern = "aoeiuv\u00fc"
+	xpinyinDictFile = "dict/Mandarin.dat"
+)
 
 //go:embed dict
 var dictDir embed.FS
@@ -35,10 +38,8 @@ var (
 	}
 )
 
-const xpinyin_dict_file = "dict/Mandarin.dat"
-
 func init() {
-	f, err := dictDir.Open(xpinyin_dict_file)
+	f, err := dictDir.Open(xpinyinDictFile)
 	if err != nil {
 		panic("dict file not found")
 	}
