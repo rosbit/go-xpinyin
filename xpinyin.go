@@ -1,4 +1,4 @@
-// Translate Chinese hanzi to pinyin (拼音) by Python, 汉字转拼音
+// Translate Chinese hanzi to pinyin (拼音) by Golang, 汉字转拼音
 
 package xpinyin
 
